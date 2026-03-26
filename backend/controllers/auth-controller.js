@@ -59,27 +59,32 @@ const register = async (req, res, next) => {
 };
 
 const verifyEmail = async (req, res, next) => {
-  const { verificationToken, email } = req.body;
+  const { token, email } = req.query;
+
+  if (!token || !email) {
+    throw new BadRequestError("Invalid verification link");
+  }
 
   try {
-    const user = await User.findOne({ email: email });
+    const user = await User.findOne({ email });
+
     if (!user) {
-      const err = new UnauthenticatedError("Verification Failed");
-      return next(err);
+      throw new UnauthenticatedError("Verification failed");
     }
 
-    if (user.verificationToken !== verificationToken) {
-      const err = new UnauthenticatedError("Verification Failed");
-      return next(err);
+    if (user.verificationToken !== token) {
+      throw new UnauthenticatedError("Verification failed");
     }
 
     user.isVerified = true;
-    user.verified = Date.now();
-    user.verificationToken = "";
+    user.verified = new Date();
+    user.verificationToken = null;
 
     await user.save();
 
-    res.status(StatusCodes.OK).json({ msg: "email verified" });
+    return res.status(StatusCodes.OK).json({
+      msg: "Email verified successfully",
+    });
   } catch (error) {
     next(error);
   }
@@ -211,47 +216,16 @@ const resetPassword = async (req, res, next) => {
         user.passwordToken = null;
         user.passwordTokenExpirationDate = null;
 
-        user.save();
+        await user.save();
 
-        res.status(StatusCodes.OK);
+        res.status(StatusCodes.OK).json({
+          msg: "Password reset successful",
+        });
       }
     }
-
-    res.status(StatusCodes.OK).json({
-      msg: "Password reset successful",
-    });
   } catch (error) {
     next(error);
   }
 };
 
-const showCurrentUser = async (req, res) => {
-  res.status(StatusCodes.OK).json({ user: req.user });
-};
-// update user with user.save()
-const updateUser = async (req, res) => {
-  const { email, name } = req.body;
-  if (!email || !name) {
-    throw new CustomError.BadRequestError("Please provide all values");
-  }
-  const user = await User.findOne({ _id: req.user.userId });
-
-  user.email = email;
-  user.name = name;
-
-  await user.save();
-
-  const tokenUser = createTokenUser(user);
-  attachCookiesToResponse({ res, user: tokenUser });
-  res.status(StatusCodes.OK).json({ user: tokenUser });
-};
-
-export {
-  register,
-  verifyEmail,
-  login,
-  logout,
-  showCurrentUser,
-  forgotPassword,
-  resetPassword,
-};
+export { register, verifyEmail, login, logout, forgotPassword, resetPassword };

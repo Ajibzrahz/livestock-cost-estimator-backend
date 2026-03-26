@@ -5,7 +5,6 @@ import {
   logout,
   register,
   resetPassword,
-  showCurrentUser,
   verifyEmail,
 } from "../controllers/auth-controller.js";
 import {
@@ -21,9 +20,8 @@ router.post("/register", validator(registerValidation), register);
 router.post("/login", validator(loginValidation), login);
 router.delete("/logout", authenticateUser, logout);
 router.post("/verify-email", verifyEmail);
-router.get("/showMe", authenticateUser, showCurrentUser);
-router.post("/forgot-password", authenticateUser, forgotPassword)
-router.post("/reset-password", authenticateUser, resetPassword)
+router.post("/forgot-password", forgotPassword)
+router.post("/reset-password", resetPassword)
 
 
 export default router;
