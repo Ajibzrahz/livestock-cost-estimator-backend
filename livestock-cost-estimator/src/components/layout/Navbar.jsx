@@ -18,10 +18,10 @@ export default function Navbar() {
           </Link>
 
   
-          <div className="hidden md:flex flex-1 justify-center items-center gap-10">
+          {/* <div className="hidden md:flex flex-1 justify-center items-center gap-10">
              <a href="#how-it-works" className="text-gray-600 hover:text-green-500 font-medium transition-colors">How It Works</a>
              <a href="#features" className="text-gray-600 hover:text-green-500 font-medium transition-colors">Features</a>
-             </div>
+             </div> */}
 
           <div className="hidden md:flex items-center gap-6">
              <Link to="/login" className="text-gray-700 font-medium hover:text-slate-900 transition-colors">Log In</Link>
