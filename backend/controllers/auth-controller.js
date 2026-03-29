@@ -24,14 +24,11 @@ const register = async (req, res, next) => {
   const payload = req.body;
 
   try {
-    //checking for existing user
     const isExisting = await User.findOne({ email: payload.email });
     if (isExisting) {
-      const err = new ConflictError("Email already exists");
-      return next(err);
+      return next(new ConflictError("Email already exists"));
     }
 
-    // first registered user is an admin
     const isFirstAccount = (await User.countDocuments({})) === 0;
     const role = isFirstAccount ? "admin" : "user";
 
@@ -39,20 +36,25 @@ const register = async (req, res, next) => {
 
     const newUser = await User.create({
       ...payload,
-      role: role,
+      role,
       verificationToken,
+      isVerified: false,
     });
-
-    //sending Email
 
     const verificationLink = `${process.env.API_URL}/api/v1/auth/verify-email?token=${verificationToken}&email=${newUser.email}`;
-    await sendVerificationEmail({
-      name: newUser.name,
-      email: newUser.email,
-      verificationLink,
-    });
 
-    res.status(StatusCodes.CREATED).json({
+    try {
+      await sendVerificationEmail({
+        name: newUser.name,
+        email: newUser.email,
+        verificationLink,
+      });
+    } catch (emailError) {
+      await User.findByIdAndDelete(newUser._id);
+      throw new BadRequestError("Unable to send verification email");
+    }
+
+    return res.status(StatusCodes.CREATED).json({
       msg: "Success! Please check your email to verify account",
     });
   } catch (error) {
