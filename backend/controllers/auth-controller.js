@@ -15,6 +15,9 @@ import {
 } from "../utils/index.js";
 import crypto from "crypto";
 import Token from "../models/token.js";
+import { OAuth2Client } from "google-auth-library";
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 //registering user
 const register = async (req, res, next) => {
@@ -150,6 +153,82 @@ const login = async (req, res, next) => {
   }
 };
 
+const googleLogin = async (req, res, next) => {
+  const { token } = req.body;
+  if (!token) {
+    throw new UnauthenticatedError("Google Token is required");
+  }
+  try {
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (!payload || !payload.email) {
+      throw new UnauthenticatedError("Invalid Google token");
+    }
+
+    const { email, name, picture, email_verified } = payload;
+
+    if (!email_verified) {
+      throw new UnauthenticatedError("Google email is not verified");
+    }
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      const isFirstAccount = (await User.countDocuments({})) === 0;
+      const role = isFirstAccount ? "admin" : "user";
+
+      user = await User.create({
+        name,
+        email,
+        role,
+        password: crypto.randomBytes(20).toString("hex"),
+        isVerified: true,
+        verified: new Date(),
+      });
+    }
+
+    const tokenUser = createUserToken(user);
+
+    let refreshToken = "";
+    const existingToken = await Token.findOne({ user: user._id });
+
+    if (existingToken) {
+      refreshToken = existingToken.refreshToken;
+      attachCookiesToResponse({ res, user: tokenUser, refreshToken });
+
+      return res.status(StatusCodes.OK).json({
+        msg: "Google login successful",
+        user: tokenUser,
+      });
+    }
+
+    refreshToken = crypto.randomBytes(40).toString("hex");
+
+    const userAgent = req.headers["user-agent"];
+    const ip = req.ip;
+
+    await Token.create({
+      refreshToken,
+      ip,
+      userAgent,
+      user: user._id,
+    });
+
+    attachCookiesToResponse({ res, user: tokenUser, refreshToken });
+
+    return res.status(StatusCodes.OK).json({
+      msg: "Google login successful",
+      user: tokenUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const logout = async (req, res, next) => {
   await Token.findOneAndDelete({ user: req.user.id });
 
@@ -234,4 +313,12 @@ const resetPassword = async (req, res, next) => {
   }
 };
 
-export { register, verifyEmail, login, logout, forgotPassword, resetPassword };
+export {
+  register,
+  verifyEmail,
+  login,
+  logout,
+  forgotPassword,
+  resetPassword,
+  googleLogin,
+};
