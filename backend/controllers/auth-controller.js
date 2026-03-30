@@ -51,7 +51,7 @@ const register = async (req, res, next) => {
       });
     } catch (emailError) {
       await User.findByIdAndDelete(newUser._id);
-      throw new BadRequestError("Unable to send verification email");
+      throw new BadRequestError(emailError.message ||"Unable to send verification email");
     }
 
     return res.status(StatusCodes.CREATED).json({

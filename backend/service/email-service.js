@@ -6,7 +6,7 @@ const createTransporter = () => {
     return nodemailer.createTransport({
       host: env.brevoHost,
       port: env.brevoPort,
-      secure: false,
+      secure: true,
       auth: {
         user: env.brevoUser,
         pass: env.brevoPass,
@@ -29,15 +29,19 @@ const createTransporter = () => {
 };
 
 export const sendEmail = async ({ to, subject, html, text }) => {
-  const transporter = createTransporter();
-
-  const info = await transporter.sendMail({
-    from: env.mailFrom,
-    to,
-    subject,
-    text,
-    html,
-  });
-
-  return info;
+  try {
+    const transporter = createTransporter();
+    const info = await transporter.sendMail({
+      from: env.mailFrom,
+      to,
+      subject,
+      text,
+      html,
+    });
+    console.log("Email sent successfully:", info.messageId);
+    return info;
+  } catch (error) {
+    console.error("Brevo Error:", error); // This will tell you if it's "Auth Failed" or "Sender Rejected"
+    throw error;
+  }
 };
