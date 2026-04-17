@@ -3,6 +3,8 @@ import AppLayout from './components/layout/AppLayout';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
+import EstimationSetup from './pages/Wizard/EstimationSetup';
+import PoultryWizard from './pages/Wizard/Poultry/PoultryWizard';
 import './App.css';
 
 function App() {
@@ -12,7 +14,10 @@ function App() {
         {/* Main site layout */}
         <Route path="/" element={<AppLayout />}>
           <Route index element={<LandingPage />} />
-          <Route path="estimate" element={<div className="p-24 text-center text-xl">Estimation Wizard (Coming Soon)</div>} />
+          <Route path="estimate">
+            <Route index element={<EstimationSetup />} />
+            <Route path="poultry" element={<PoultryWizard />} />
+          </Route>
         </Route>
 
         {/* Auth routes without global layout */}
