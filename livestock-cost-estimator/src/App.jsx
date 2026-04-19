@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import EstimationSetup from './pages/Wizard/EstimationSetup';
 import PoultryWizard from './pages/Wizard/Poultry/PoultryWizard';
+import CattleWizard from './pages/Wizard/Cattle/CattleWizard';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Route path="estimate">
             <Route index element={<EstimationSetup />} />
             <Route path="poultry" element={<PoultryWizard />} />
+            <Route path="cattle" element={<CattleWizard />} />
           </Route>
         </Route>
 
