@@ -1,6 +1,6 @@
 import Estimation from "../models/estimation.js";
 import { StatusCodes } from "http-status-codes";
-import {runEstimation} from "../service/estimation-service.js";
+import { runEstimation } from "../service/estimation-service.js";
 
 const createEstimation = async (req, res, next) => {
   try {
@@ -20,19 +20,13 @@ const createEstimation = async (req, res, next) => {
 };
 
 const updateStep2 = async (req, res, next) => {
-  const { id } = req.params;
+  const estimation = req.estimation;
   try {
-    const estimation = await Estimation.findOneAndUpdate(
-      { _id: id, user: req.user.id },
-      { $set: { productionSetup: req.body, currentStep: 2 } },
-      { new: true, runValidators: true },
-    );
-    if (!estimation) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        success: false,
-        message: "Estimation not found",
-      });
-    }
+    estimation.productionSetup = req.body;
+    estimation.currentStep = 2;
+
+    await estimation.save();
+
     res.status(StatusCodes.OK).json({
       success: true,
       estimation,
@@ -43,19 +37,13 @@ const updateStep2 = async (req, res, next) => {
 };
 
 const updateStep3 = async (req, res, next) => {
-  const { id } = req.params;
+  const estimation = req.estimation;
   try {
-    const estimation = await Estimation.findOneAndUpdate(
-      { _id: id, user: req.user.id },
-      { $set: { housingInfrastructure: req.body, currentStep: 3 } },
-      { new: true, runValidators: true },
-    );
-    if (!estimation) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        success: false,
-        message: "Estimation not found",
-      });
-    }
+    estimation.housingInfrastructure = req.body;
+    estimation.currentStep = 3;
+
+    await estimation.save();
+
     res.status(StatusCodes.OK).json({
       success: true,
       estimation,
@@ -66,19 +54,14 @@ const updateStep3 = async (req, res, next) => {
 };
 
 const updateStep4 = async (req, res, next) => {
-  const { id } = req.params;
+  const estimation = req.estimation;
+
   try {
-    const estimation = await Estimation.findOneAndUpdate(
-      { _id: id, user: req.user.id },
-      { $set: { feedOperations: req.body, currentStep: 4 } },
-      { new: true, runValidators: true },
-    );
-    if (!estimation) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        success: false,
-        message: "Estimation not found",
-      });
-    }
+    estimation.feedOperations = req.body;
+    estimation.currentStep = 4;
+
+    await estimation.save();
+
     res.status(StatusCodes.OK).json({
       success: true,
       estimation,
@@ -89,19 +72,13 @@ const updateStep4 = async (req, res, next) => {
 };
 
 const updateStep5 = async (req, res, next) => {
-  const { id } = req.params;
+  const estimation = req.estimation;
   try {
-    const estimation = await Estimation.findOneAndUpdate(
-      { _id: id, user: req.user.id },
-      { $set: { healthManagement: req.body, currentStep: 5 } },
-      { new: true, runValidators: true },
-    );
-    if (!estimation) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        success: false,
-        message: "Estimation not found",
-      });
-    }
+    estimation.healthManagement = req.body;
+    estimation.currentStep = 5;
+
+    await estimation.save();
+
     res.status(StatusCodes.OK).json({
       success: true,
       estimation,
@@ -112,20 +89,12 @@ const updateStep5 = async (req, res, next) => {
 };
 
 const updateStep6 = async (req, res, next) => {
-  const { id } = req.params;
+  const estimation = req.estimation;
   try {
-    const estimation = await Estimation.findOneAndUpdate(
-      { _id: id, user: req.user.id },
-      { $set: { marketInputs: req.body, currentStep: 6 } },
-      { new: true, runValidators: true },
-    );
+    estimation.marketInputs = req.body;
+    estimation.currentStep = 6;
 
-    if (!estimation) {
-      return res.status(StatusCodes.NOT_FOUND).json({
-        success: false,
-        message: "Estimation not found",
-      });
-    }
+    await estimation.save();
 
     res.status(StatusCodes.OK).json({
       success: true,
