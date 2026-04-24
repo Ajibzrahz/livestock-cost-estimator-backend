@@ -29,9 +29,7 @@ const estimationSchema = new mongoose.Schema(
       default: 1,
     },
 
-    // =========================
     // 🏗️ PRODUCTION SETUP
-    // =========================
     productionSetup: {
       productionType: {
         type: String,
@@ -40,7 +38,13 @@ const estimationSchema = new mongoose.Schema(
 
       productionSystem: {
         type: String,
-        enum: ["intensive", "semi-intensive", "extensive", "deep litter", "battery cage"],
+        enum: [
+          "intensive",
+          "semi-intensive",
+          "extensive",
+          "deep litter",
+          "battery cage",
+        ],
       },
 
       numberOfAnimals: {
@@ -59,9 +63,8 @@ const estimationSchema = new mongoose.Schema(
       },
     },
 
-    // =========================
     // 🏠 HOUSING
-    // =========================
+
     housingInfrastructure: {
       hasHousing: {
         type: Boolean,
@@ -86,9 +89,7 @@ const estimationSchema = new mongoose.Schema(
       ],
     },
 
-    // =========================
     // 🌽 FEED & OPERATIONS
-    // =========================
     feedOperations: {
       feedPrice: {
         type: Number,
@@ -106,9 +107,7 @@ const estimationSchema = new mongoose.Schema(
       },
     },
 
-    // =========================
     // 💉 HEALTH MANAGEMENT
-    // =========================
     healthManagement: {
       mortalityRate: {
         type: Number,
@@ -137,9 +136,8 @@ const estimationSchema = new mongoose.Schema(
       },
     },
 
-    // =========================
     // 💰 MARKET INPUTS
-    // =========================
+
     marketInputs: {
       sellingPricePerKg: {
         type: Number,
@@ -157,9 +155,7 @@ const estimationSchema = new mongoose.Schema(
       },
     },
 
-    // =========================
     // 📊 FINAL RESULTS
-    // =========================
     results: {
       totalCostEstimation: {
         type: Number,
@@ -182,9 +178,7 @@ const estimationSchema = new mongoose.Schema(
       },
     },
 
-    // =========================
     // 🤖 ML OUTPUT (for later)
-    // =========================
     modelOutput: {
       predictedFeedCost: {
         type: Number,
@@ -207,7 +201,7 @@ const estimationSchema = new mongoose.Schema(
       },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Estimation = mongoose.model("Estimation", estimationSchema);

@@ -9,16 +9,29 @@ import {
   updateStep5,
   updateStep6,
 } from "../controllers/estimation-controller.js";
+import {
+  createEstimatorValidator,
+  feedOperationsValidator,
+  healthManagementValidator,
+  housingInfrastructureValidator,
+  marketInputsValidator,
+  productionSetupValidator,
+} from "../validators/estimator-validator.js";
+import validator from "../middleware/validator.js";
 
 const router = express.Router();
 router.use(authenticateUser);
 
-router.post("/", createEstimation);
-router.patch("/:id/step-2", updateStep2);
-router.patch("/:id/step-3", updateStep3);
-router.patch("/:id/step-4", updateStep4);
-router.patch("/:id/step-5", updateStep5);
-router.patch("/:id/step-6", updateStep6);
+router.post("/", validator(createEstimatorValidator), createEstimation);
+router.patch("/:id/step-2", validator(productionSetupValidator), updateStep2);
+router.patch(
+  "/:id/step-3",
+  validator(housingInfrastructureValidator),
+  updateStep3,
+);
+router.patch("/:id/step-4", validator(feedOperationsValidator), updateStep4);
+router.patch("/:id/step-5", validator(healthManagementValidator), updateStep5);
+router.patch("/:id/step-6", validator(marketInputsValidator), updateStep6);
 router.post("/:id/calculate", calculateEstimation);
 
 export default router;
