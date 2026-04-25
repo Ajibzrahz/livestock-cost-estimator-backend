@@ -16,8 +16,8 @@ This document describes the authentication API currently exposed by the backend 
 
 This backend uses **HTTP-only signed cookies** for authentication:
 
-* `accessToken`
-* `refreshToken`
+- `accessToken`
+- `refreshToken`
 
 Frontend requests that need cookies should be sent with credentials enabled.
 
@@ -33,14 +33,13 @@ Creates a new user account, generates an email verification token, and sends a v
 
 ### Validation Rules
 
-* `name`: string, required, 3 to 50 characters
-* `email`: valid email, required
-* `password`: required, minimum 8 characters, must include:
-
-  * uppercase letter
-  * lowercase letter
-  * number
-  * special character from `@$#&!~_`
+- `name`: string, required, 3 to 50 characters
+- `email`: valid email, required
+- `password`: required, minimum 8 characters, must include:
+  - uppercase letter
+  - lowercase letter
+  - number
+  - special character from `@$#&!~_`
 
 ### Request Body
 
@@ -82,9 +81,9 @@ Creates a new user account, generates an email verification token, and sends a v
 
 ### Notes
 
-* The first registered account is assigned the role `admin`.
-* Every other new account is assigned the role `user`.
-* The verification link points to the backend route:
+- The first registered account is assigned the role `admin`.
+- Every other new account is assigned the role `user`.
+- The verification link points to the backend route:
   `GET /api/v1/auth/verify-email?token=...&email=...`
 
 ---
@@ -99,8 +98,8 @@ Verifies a user's email using the token and email from the query string.
 
 ### Query Parameters
 
-* `token` (required)
-* `email` (required)
+- `token` (required)
+- `email` (required)
 
 ### Example
 
@@ -148,8 +147,8 @@ Authenticates a verified user, stores refresh token data in the database, and se
 
 ### Validation Rules
 
-* `email`: valid email, required
-* `password`: required
+- `email`: valid email, required
+- `password`: required
 
 ### Request Body
 
@@ -172,8 +171,8 @@ Authenticates a verified user, stores refresh token data in the database, and se
 
 ### Cookies Set On Success
 
-* `accessToken` (HTTP-only, signed, expires in about 1 day)
-* `refreshToken` (HTTP-only, signed, expires in about 30 days)
+- `accessToken` (HTTP-only, signed, expires in about 1 day)
+- `refreshToken` (HTTP-only, signed, expires in about 30 days)
 
 ### Possible Error Responses
 
@@ -293,9 +292,9 @@ If the email exists, generates a reset token, stores a hashed token plus expiry,
 
 ### Notes
 
-* This endpoint returns the same success message whether the email exists or not.
-* Reset token expiry is set to about 10 minutes.
-* The email link points to the backend reset-password path with `token` and `email` in the URL.
+- This endpoint returns the same success message whether the email exists or not.
+- Reset token expiry is set to about 10 minutes.
+- The email link points to the backend reset-password path with `token` and `email` in the URL.
 
 ---
 
@@ -377,10 +376,217 @@ await api.delete("/auth/logout");
 
 ## Important Current Backend Notes
 
-* Only the auth router is currently mounted in `server.js`.
-* The backend currently uses hard-coded backend URLs in the email verification and password reset links.
-* CORS is not visibly configured in `server.js`, so cross-origin frontend integration may fail until CORS is added.
+- Only the auth router is currently mounted in `server.js`.
+- The backend currently uses hard-coded backend URLs in the email verification and password reset links.
+- CORS is not visibly configured in `server.js`, so cross-origin frontend integration may fail until CORS is added.
 
 ## Summary for Frontend Dev
 
 The frontend dev should not need to read backend source code to discover endpoints. This document is the API contract they can integrate against.
+
+# 🐄 Estimation API
+
+- **Base Path**: `/api/v1/estimations`
+- **Auth Required**: ✅ Yes
+
+## 1) Create Estimation
+
+**Endpoint**: `POST /api/v1/estimations`
+
+Description
+
+Initializes a new estimation and starts the wizard.
+
+### Request Body
+
+```json
+{
+  "livestockType": "cattle"
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "estimation": {
+    "_id": "estimation_id",
+    "livestockType": "cattle",
+    "currentStep": 1,
+    "status": "draft"
+  }
+}
+```
+
+## 2) Production Setup
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/step-2`
+
+### Request Body
+
+```json
+{
+  "productionType": "meat",
+  "productionSystem": "intensive",
+  "numberOfAnimals": 100,
+  "cycleDuration": 6,
+  "location": "Lagos"
+}
+```
+
+## 3) Housing
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/step-3`
+
+### Request Body
+
+```json
+{
+  "hasHousing": true,
+  "housingType": "modern",
+  "capacity": 120,
+  "equipment": ["feeder", "drinkers"]
+}
+```
+
+## 4) Feed & Operations
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/step-4`
+
+### Request Body
+
+```json
+{
+  "feedPrice": 150000,
+  "laborCost": 50000,
+  "electricityCost": 20000
+}
+```
+
+## 5) Health Management
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/step-5`
+
+### Request Body
+
+```json
+{
+  "mortalityRate": 5,
+  "vaccinationProgram": "standard",
+  "vetServiceFrequency": "monthly",
+  "medicationIntensity": "medium",
+  "diseaseRiskLevel": "medium"
+}
+```
+
+## 6) Market Inputs
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/step-6`
+
+### Request Body
+
+```json
+{
+  "sellingPricePerKg": 2500,
+  "eggPricePerEgg": 50,
+  "milkPricePerLiter": 800
+}
+```
+
+## 7) Calculate Estimations
+
+**Endpoint**: `PATCH /api/v1/estimations/:id/calculate`
+
+Description
+
+Runs cost estimation logic and finalizes the result.
+
+### Response
+
+```json
+{
+  "success": true,
+  "estimation": {
+    "status": "completed",
+    "results": {
+      "totalCostEstimation": 220000,
+      "projectedRevenue": 350000,
+      "projectedProfit": 130000,
+      "roi": 59.1
+    }
+  },
+  "costBreakdown": {
+    "feedPrice": 150000,
+    "laborCost": 50000,
+    "electricityCost": 20000,
+    "housingCost": 30000,
+    "equipmentCost": 10000,
+    "vaccinationCost": 5000,
+    "medicationCost": 7000,
+    "vetServiceCost": 4000
+  }
+}
+```
+
+# 📊 Dashboard API
+
+- **Base Path**: `/api/v1/dashboard`
+- **Auth Required**: ✅ Yes
+
+## 1) Dashboard Summary
+
+**Endpoint**: `GET /api/v1/dashboard/summary`
+
+### Response
+
+```json
+{
+  "totalEstimatedCost": 425000,
+  "projectedRevenue": 580000,
+  "projectedProfit": 155000,
+  "roi": 36.4
+}
+```
+
+## 2) Cost-Breakdown (Chart)
+
+**Endpoint**: `GET /api/v1/dashboard/cost-breakdown`
+
+### Response
+
+```json
+{
+  "feed": 45,
+  "vet": 25,
+  "operations": 20,
+  "others": 10
+}
+```
+
+## 3) Recent Estimation (Chart)
+
+**Endpoint**: `GET /api/v1/dashboard/cost-breakdown`
+
+### Response
+
+```json
+{
+  "feed": 45,
+  "vet": 25,
+  "operations": 20,
+  "others": 10
+}
+```
+
+## 4) Analytics
+
+**Endpoint**: `GET /api/v1/dashboard/analytics`
+
+### Response
+
+| Metric            | Value     |
+| :---------------- | :-------- |
+| **Total Cost**    | 1,400,000 |
+| **Total Revenue** | 9,500,000 |
+| **Total Profit**  | 8,000,000 |
