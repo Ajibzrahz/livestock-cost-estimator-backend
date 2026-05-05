@@ -22,20 +22,25 @@ import dashboardRouter from "./routes/dashboard-route.js";
 import notFound from "./middleware/not-found.js";
 import errorHandlerMiddleware from "./middleware/error-handler.js";
 
-app.use(cors({
-  origin: "http://localhost:5173",
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://livestock-cost-estimator.vercel.app",
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.use(cookieParser(process.env.JWT_SECRET));
 
 app.use("/api/v1/auth", authRouter);
-app.use("/api/v1/estimation", estimationRouter)
-app.use("/api/v1/dashboard", dashboardRouter)
+app.use("/api/v1/estimation", estimationRouter);
+app.use("/api/v1/dashboard", dashboardRouter);
 
-app.use(notFound)
-app.use(errorHandlerMiddleware)
+app.use(notFound);
+app.use(errorHandlerMiddleware);
 
 //starting program
 const port = process.env.PORT || 5000;
