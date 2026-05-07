@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema(
     },
     passwordTokenExpirationDate: {
       type: Date,
-    }
+    },
   },
   { timestamps: true },
 );
@@ -50,6 +50,18 @@ userSchema.pre("save", async function (next) {
 
   const salt = bcrypt.genSaltSync(10);
   this.password = bcrypt.hashSync(this.password, salt);
+});
+
+// In User.js model
+userSchema.pre("findOneAndDelete", async function (next) {
+  const doc = await this.model.findOne(this.getQuery());
+  if (doc) {
+    // delete user estimation
+    await mongoose.model("Estimation").deleteMany({ userId: doc._id });
+    //  delete user token
+    await mongoose.model("Token").deleteMany({ user: doc._id });
+  }
+  next();
 });
 
 //comparing password method
