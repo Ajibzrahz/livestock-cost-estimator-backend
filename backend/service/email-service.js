@@ -17,7 +17,7 @@ const sendWithBrevoApi = async ({ to, subject, html, text }) => {
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
-      accept: "application/json",
+      "accept": "application/json",
       "api-key": env.brevoApiKey,
       "content-type": "application/json",
     },
@@ -26,7 +26,9 @@ const sendWithBrevoApi = async ({ to, subject, html, text }) => {
         name: extractSenderName(env.mailFrom),
         email: extractSenderEmail(env.mailFrom),
       },
-      to: Array.isArray(to) ? to.map((email) => ({ email })) : [{ email: to }],
+      to: Array.isArray(to)
+        ? to.map((email) => ({ email }))
+        : [{ email: to }],
       subject,
       htmlContent: html,
       textContent: text,
