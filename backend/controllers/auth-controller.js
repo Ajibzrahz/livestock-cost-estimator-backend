@@ -45,7 +45,7 @@ const register = async (req, res, next) => {
 
     //sending Email
 
-    const verificationLink = `https://livestock-cost-estimator.vercel.app/verify-email?token=${verificationToken}&email=${newUser.email}`;
+    const verificationLink = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}&email=${newUser.email}`;
     await sendVerificationEmail({
       name: newUser.name,
       email: newUser.email,
