@@ -15,5 +15,5 @@ export {
   verificationEmailTemplate,
   sendVerificationEmail,
   sendResetPasswordEmail,
-  createHash
+  createHash,
 };
