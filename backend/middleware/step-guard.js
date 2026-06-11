@@ -10,28 +10,29 @@ const stepGuard = (requiredStep) => async (req, res, next) => {
     });
 
     if (!estimation) {
-      const err = new NotFoundError("Estimation not found");
-      return next(err);
+      return next(new NotFoundError("Estimation not found"));
     }
 
-    if (estimation === "completed") {
-      const err = new BadRequestError(
-        "The estimation has already been completed",
+    // Fix: was comparing estimation object to string — now checks status field
+    if (estimation.status === "completed") {
+      return next(
+        new BadRequestError("This estimation has already been completed"),
       );
     }
 
     if (estimation.currentStep !== requiredStep - 1) {
-      const err = new BadRequestError(
-        `you must first complete ${requiredStep - 1} first`,
+      return next(
+        new BadRequestError(
+          `You must complete step ${requiredStep - 1} before proceeding to step ${requiredStep}`,
+        ),
       );
-      return next(err);
     }
-    req.estimation = estimation;
 
+    req.estimation = estimation;
     next();
   } catch (error) {
     next(error);
   }
 };
 
-export default stepGuard
+export default stepGuard;

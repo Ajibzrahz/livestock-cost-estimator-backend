@@ -1,92 +1,123 @@
-export const runEstimation = (estimation) => {
-  const livestockType = estimation.livestockType;
+// ── Derive total feed price from staged inputs ────────────────────────────────
+const computeFeedPrice = (feedOperations, productionType) => {
+  if (!feedOperations) return 0;
 
-  if (livestockType === "poultry") {
-    return runPoultryEstimation(estimation);
+  if (feedOperations.manualOverride && feedOperations.feedPrice > 0) {
+    return feedOperations.feedPrice;
   }
 
-  if (livestockType === "cattle") {
-    return runCattleEstimation(estimation);
+  if (productionType === "broiler") {
+    const total = (feedOperations.broilerStarterCost || 0) + (feedOperations.broilerFinisherCost || 0);
+    if (total > 0) return total;
+  }
+  if (productionType === "layer") {
+    const total = (feedOperations.chickStarterCost || 0) + (feedOperations.growerMashCost || 0) + (feedOperations.layerMashCost || 0);
+    if (total > 0) return total;
+  }
+  if (productionType === "beef") {
+    const total = (feedOperations.feedCostPerKg || 0) + (feedOperations.supplementCost || 0);
+    if (total > 0) return total;
   }
 
-  throw new Error("Unsupported livestock type");
+  return feedOperations.feedPrice || 0;
 };
 
+// ── Housing cost helpers ──────────────────────────────────────────────────────
+const getPoultryHousingCost = (numberOfAnimals, h) => {
+  if (h?.housingStatus === "existing" || h?.housingStatus === "not-required") return 0;
+  if (h?.hasHousing) return 0;
+
+  const t = h?.housingType || "basic";
+  if (t === "steel-structure" || t === "premium")  return numberOfAnimals * 4000;
+  if (t === "block-concrete"  || t === "standard") return numberOfAnimals * 2500;
+  return numberOfAnimals * 1500; // wooden / basic
+};
+
+const getCattleHousingCost = (numberOfAnimals, h) => {
+  if (h?.housingStatus === "existing" || h?.housingStatus === "not-required") return 0;
+  if (h?.hasHousing) return 0;
+
+  const t = h?.housingType || "basic";
+  if (t === "steel-structure" || t === "premium")  return numberOfAnimals * 150000;
+  if (t === "block-concrete"  || t === "standard") return numberOfAnimals * 130000;
+  return numberOfAnimals * 80000; // wooden / basic
+};
+
+// ── Shared cost helpers ───────────────────────────────────────────────────────
+const getEquipmentCost = (n, equipment = []) =>
+  equipment?.length ? equipment.length * n * 50 : 0;
+
+const getVaccinationCost = (n, program) => {
+  if (program === "intensive")                    return n * 500;
+  if (program === "standard")                     return n * 250;
+  if (program === "minimal" || program === "basic") return n * 100;
+  return 0;
+};
+
+const getMedicationCost = (n, intensity) => {
+  if (intensity === "high")   return n * 400;
+  if (intensity === "medium") return n * 200;
+  if (intensity === "low")    return n * 100;
+  return 0;
+};
+
+const getVetServiceCost = (n, frequency) => {
+  if (frequency === "weekly")    return n * 300;
+  if (frequency === "monthly")   return n * 150;
+  if (frequency === "quarterly") return n * 75;
+  return 0;
+};
+
+const getParasiteControlCost = (n, parasiteControl) => {
+  if (parasiteControl === "regular")    return n * 200;
+  if (parasiteControl === "occasional") return n * 100;
+  return 0;
+};
+
+// ── Poultry estimation ────────────────────────────────────────────────────────
 const runPoultryEstimation = (estimation) => {
-  const productionSetup = estimation.productionSetup || {};
-  const housingInfrastructure = estimation.housingInfrastructure || {};
-  const feedOperations = estimation.feedOperations || {};
-  const healthManagement = estimation.healthManagement || {};
-  const marketInputs = estimation.marketInputs || {};
+  const setup   = estimation.productionSetup       || {};
+  const housing = estimation.housingInfrastructure || {};
+  const feed    = estimation.feedOperations        || {};
+  const health  = estimation.healthManagement      || {};
 
-  const numberOfAnimals = productionSetup.numberOfAnimals || 0;
-  const cycleDuration = productionSetup.cycleDuration || 0;
+  const n             = setup.numberOfAnimals || 0;
+  const cycleDuration = setup.cycleDuration   || 0;
+  const productionType= setup.productionType;
 
-  // Manual costs from user input
-  const feedPrice = feedOperations.feedPrice || 0;
-  const laborCost = feedOperations.laborCost || 0;
-  const electricityCost = feedOperations.electricityCost || 0;
+  const feedPrice       = computeFeedPrice(feed, productionType);
+  const laborCost       = feed.laborCost       || 0;
+  const electricityCost = feed.electricityCost || 0;
+  const mortalityRate   = health.mortalityRate || 0;
 
-  const mortalityRate = healthManagement.mortalityRate || 0;
+  // Market inputs now live in feedOperations
+  const sellingPricePerKg = feed.sellingPricePerKg || 0;
+  const eggPricePerEgg    = feed.eggPricePerEgg    || 0;
 
-  const sellingPricePerKg = marketInputs.sellingPricePerKg || 0;
-  const eggPricePerEgg = marketInputs.eggPricePerEgg || 0;
-
-  // Optional derived/default costs
-  const housingCost = getPoultryHousingCost(
-    numberOfAnimals,
-    housingInfrastructure
-  );
-
-  const equipmentCost = getEquipmentCost(
-    numberOfAnimals,
-    housingInfrastructure.equipment
-  );
-
-  const vaccinationCost = getVaccinationCost(
-    numberOfAnimals,
-    healthManagement.vaccinationProgram
-  );
-
-  const medicationCost = getMedicationCost(
-    numberOfAnimals,
-    healthManagement.medicationIntensity
-  );
-
-  const vetServiceCost = getVetServiceCost(
-    numberOfAnimals,
-    healthManagement.vetServiceFrequency
-  );
+  const housingCost     = getPoultryHousingCost(n, housing);
+  const equipmentCost   = getEquipmentCost(n, housing.equipment);
+  const vaccinationCost = getVaccinationCost(n, health.vaccinationProgram);
+  const medicationCost  = getMedicationCost(n, health.medicationIntensity);
+  const vetServiceCost  = getVetServiceCost(n, health.vetServiceFrequency);
 
   const totalCostEstimation =
-    feedPrice +
-    laborCost +
-    electricityCost +
-    housingCost +
-    equipmentCost +
-    vaccinationCost +
-    medicationCost +
-    vetServiceCost;
+    feedPrice + laborCost + electricityCost +
+    housingCost + equipmentCost +
+    vaccinationCost + medicationCost + vetServiceCost;
 
-  const survivingAnimals = numberOfAnimals * (1 - mortalityRate / 100);
-
+  const surviving = n * (1 - mortalityRate / 100);
   let projectedRevenue = 0;
 
-  // Poultry revenue rule
-  if (productionSetup.productionType === "broiler") {
-    const averageWeightPerBird = 2; // placeholder rule
-    projectedRevenue =
-      survivingAnimals * averageWeightPerBird * sellingPricePerKg;
-  } else if (productionSetup.productionType === "layer") {
-    const eggsPerBird = cycleDuration * 5; // placeholder rule
-    projectedRevenue = survivingAnimals * eggsPerBird * eggPricePerEgg;
+  if (productionType === "broiler") {
+    projectedRevenue = surviving * 2.2 * sellingPricePerKg;
+  } else if (productionType === "layer") {
+    projectedRevenue = surviving * (cycleDuration * 5) * eggPricePerEgg;
   }
 
   const projectedProfit = projectedRevenue - totalCostEstimation;
-  const roi =
-    totalCostEstimation > 0
-      ? (projectedProfit / totalCostEstimation) * 100
-      : 0;
+  const roi = totalCostEstimation > 0
+    ? (projectedProfit / totalCostEstimation) * 100
+    : 0;
 
   return {
     totalCostEstimation,
@@ -94,95 +125,52 @@ const runPoultryEstimation = (estimation) => {
     projectedProfit,
     roi,
     costBreakdown: {
-      feedPrice,
-      laborCost,
-      electricityCost,
-      housingCost,
-      equipmentCost,
-      vaccinationCost,
-      medicationCost,
-      vetServiceCost,
+      feedPrice, laborCost, electricityCost,
+      housingCost, equipmentCost,
+      vaccinationCost, medicationCost, vetServiceCost,
     },
   };
 };
 
+// ── Cattle estimation ─────────────────────────────────────────────────────────
 const runCattleEstimation = (estimation) => {
-  const productionSetup = estimation.productionSetup || {};
-  const housingInfrastructure = estimation.housingInfrastructure || {};
-  const feedOperations = estimation.feedOperations || {};
-  const healthManagement = estimation.healthManagement || {};
-  const marketInputs = estimation.marketInputs || {};
+  const setup   = estimation.productionSetup       || {};
+  const housing = estimation.housingInfrastructure || {};
+  const feed    = estimation.feedOperations        || {};
+  const health  = estimation.healthManagement      || {};
 
-  const numberOfAnimals = productionSetup.numberOfAnimals || 0;
-  const cycleDuration = productionSetup.cycleDuration || 0;
+  const n            = setup.numberOfAnimals || 0;
+  const productionType = setup.productionType;
 
-  const feedPrice = feedOperations.feedPrice || 0;
-  const laborCost = feedOperations.laborCost || 0;
-  const electricityCost = feedOperations.electricityCost || 0;
+  const feedPrice       = computeFeedPrice(feed, productionType);
+  const laborCost       = feed.laborCost       || 0;
+  const electricityCost = feed.electricityCost || 0;
+  const mortalityRate   = health.mortalityRate || 0;
 
-  const mortalityRate = healthManagement.mortalityRate || 0;
+  // Market inputs now live in feedOperations
+  const sellingPricePerKg = feed.sellingPricePerKg || 0;
 
-  const sellingPricePerKg = marketInputs.sellingPricePerKg || 0;
-  const milkPricePerLiter = marketInputs.milkPricePerLiter || 0;
-
-  const housingCost = getCattleHousingCost(
-    numberOfAnimals,
-    housingInfrastructure
-  );
-
-  const equipmentCost = getEquipmentCost(
-    numberOfAnimals,
-    housingInfrastructure.equipment
-  );
-
-  const vaccinationCost = getVaccinationCost(
-    numberOfAnimals,
-    healthManagement.vaccinationProgram
-  );
-
-  const medicationCost = getMedicationCost(
-    numberOfAnimals,
-    healthManagement.medicationIntensity
-  );
-
-  const vetServiceCost = getVetServiceCost(
-    numberOfAnimals,
-    healthManagement.vetServiceFrequency
-  );
+  const housingCost         = getCattleHousingCost(n, housing);
+  const equipmentCost       = getEquipmentCost(n, housing.equipment);
+  const vaccinationCost     = getVaccinationCost(n, health.vaccinationProgram);
+  const medicationCost      = getMedicationCost(n, health.medicationIntensity);
+  const vetServiceCost      = getVetServiceCost(n, health.vetServiceFrequency);
+  const parasiteControlCost = getParasiteControlCost(n, health.parasiteControl);
 
   const totalCostEstimation =
-    feedPrice +
-    laborCost +
-    electricityCost +
-    housingCost +
-    equipmentCost +
-    vaccinationCost +
-    medicationCost +
-    vetServiceCost;
+    feedPrice + laborCost + electricityCost +
+    housingCost + equipmentCost +
+    vaccinationCost + medicationCost + vetServiceCost + parasiteControlCost;
 
-  const survivingAnimals = numberOfAnimals * (1 - mortalityRate / 100);
-
-  let projectedRevenue = 0;
-
-  // Cattle revenue rule
-  if (productionSetup.productionType === "beef") {
-    const averageWeightPerCattle = 250; // placeholder rule
-    projectedRevenue =
-      survivingAnimals * averageWeightPerCattle * sellingPricePerKg;
-  } else if (productionSetup.productionType === "dairy") {
-    const milkProductionPerCowPerMonth = 120; // placeholder rule
-    projectedRevenue =
-      survivingAnimals *
-      milkProductionPerCowPerMonth *
-      cycleDuration *
-      milkPricePerLiter;
-  }
+  const surviving = n * (1 - mortalityRate / 100);
+  const projectedRevenue = productionType === "beef"
+    ? surviving * 250 * sellingPricePerKg
+    : 0;
 
   const projectedProfit = projectedRevenue - totalCostEstimation;
-  const roi =
-    totalCostEstimation > 0
-      ? (projectedProfit / totalCostEstimation) * 100
-      : 0;
+  const roi = totalCostEstimation > 0
+    ? (projectedProfit / totalCostEstimation) * 100
+    : 0;
 
   return {
     totalCostEstimation,
@@ -190,66 +178,16 @@ const runCattleEstimation = (estimation) => {
     projectedProfit,
     roi,
     costBreakdown: {
-      feedPrice,
-      laborCost,
-      electricityCost,
-      housingCost,
-      equipmentCost,
-      vaccinationCost,
-      medicationCost,
-      vetServiceCost,
+      feedPrice, laborCost, electricityCost,
+      housingCost, equipmentCost,
+      vaccinationCost, medicationCost, vetServiceCost, parasiteControlCost,
     },
   };
 };
 
-const getPoultryHousingCost = (numberOfAnimals, housingInfrastructure) => {
-  if (housingInfrastructure?.hasHousing) return 0;
-
-  const housingType = housingInfrastructure?.housingType || "basic";
-
-  if (housingType === "standard") return numberOfAnimals * 2500;
-  if (housingType === "premium") return numberOfAnimals * 4000;
-
-  return numberOfAnimals * 1500;
-};
-
-const getCattleHousingCost = (numberOfAnimals, housingInfrastructure) => {
-  if (housingInfrastructure?.hasHousing) return 0;
-
-  const housingType = housingInfrastructure?.housingType || "basic";
-
-  if (housingType === "standard") return numberOfAnimals * 80000;
-  if (housingType === "premium") return numberOfAnimals * 150000;
-
-  return numberOfAnimals * 50000;
-};
-
-const getEquipmentCost = (numberOfAnimals, equipment = []) => {
-  if (!equipment || equipment.length === 0) return 0;
-
-  return equipment.length * numberOfAnimals * 50;
-};
-
-const getVaccinationCost = (numberOfAnimals, vaccinationProgram) => {
-  if (vaccinationProgram === "intensive") return numberOfAnimals * 500;
-  if (vaccinationProgram === "standard") return numberOfAnimals * 250;
-  if (vaccinationProgram === "minimal") return numberOfAnimals * 100;
-
-  return 0;
-};
-
-const getMedicationCost = (numberOfAnimals, medicationIntensity) => {
-  if (medicationIntensity === "high") return numberOfAnimals * 400;
-  if (medicationIntensity === "medium") return numberOfAnimals * 200;
-  if (medicationIntensity === "low") return numberOfAnimals * 100;
-
-  return 0;
-};
-
-const getVetServiceCost = (numberOfAnimals, vetServiceFrequency) => {
-  if (vetServiceFrequency === "weekly") return numberOfAnimals * 300;
-  if (vetServiceFrequency === "monthly") return numberOfAnimals * 150;
-  if (vetServiceFrequency === "quarterly") return numberOfAnimals * 75;
-
-  return 0;
+// ── Entry point ───────────────────────────────────────────────────────────────
+export const runEstimation = (estimation) => {
+  if (estimation.livestockType === "poultry") return runPoultryEstimation(estimation);
+  if (estimation.livestockType === "cattle")  return runCattleEstimation(estimation);
+  throw new Error("Unsupported livestock type");
 };

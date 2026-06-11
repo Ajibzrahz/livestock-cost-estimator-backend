@@ -1,19 +1,40 @@
-/**
- * estimation-controller.js  (updated — ML-integrated version)
- *
- * Changes from original:
- *  - calculateEstimation now calls getMLPrediction() after the rule-based engine
- *  - If ML server is available, modelOutput is populated and the response
- *    includes an mlResults block alongside the rule-based results
- *  - If ML server is down, it falls back silently to the original behaviour
- */
-
 import Estimation from "../models/estimation.js";
 import { StatusCodes } from "http-status-codes";
 import { runEstimation } from "../service/estimation-service.js";
-import { getMLPrediction } from "../service/ml-service.js";   // ← NEW
+import { getMLPrediction, applySmartDefaults } from "../service/ml-service.js";
 
-// ─── unchanged step controllers ───────────────────────────────────────────────
+// ── Compute total feedPrice from staged inputs ────────────────────────────────
+const computeTotalFeedPrice = (feedOperations, productionType) => {
+  if (!feedOperations) return 0;
+
+  if (feedOperations.manualOverride && feedOperations.feedPrice > 0) {
+    return feedOperations.feedPrice;
+  }
+
+  if (productionType === "broiler") {
+    const total =
+      (feedOperations.broilerStarterCost || 0) +
+      (feedOperations.broilerFinisherCost || 0);
+    if (total > 0) return total;
+  }
+  if (productionType === "layer") {
+    const total =
+      (feedOperations.chickStarterCost || 0) +
+      (feedOperations.growerMashCost || 0) +
+      (feedOperations.layerMashCost || 0);
+    if (total > 0) return total;
+  }
+  if (productionType === "beef") {
+    const total =
+      (feedOperations.feedCostPerKg || 0) +
+      (feedOperations.supplementCost || 0);
+    if (total > 0) return total;
+  }
+
+  return feedOperations.feedPrice || 0;
+};
+
+// ── Step controllers ──────────────────────────────────────────────────────────
 
 const createEstimation = async (req, res, next) => {
   try {
@@ -28,6 +49,7 @@ const createEstimation = async (req, res, next) => {
   }
 };
 
+// Step 2 — Production setup
 const updateStep2 = async (req, res, next) => {
   const estimation = req.estimation;
   try {
@@ -40,10 +62,17 @@ const updateStep2 = async (req, res, next) => {
   }
 };
 
+// Step 3 — Housing & infrastructure
 const updateStep3 = async (req, res, next) => {
   const estimation = req.estimation;
   try {
     estimation.housingInfrastructure = req.body;
+
+    // Sync hasHousing with housingStatus for backward compatibility
+    const status = req.body.housingStatus;
+    estimation.housingInfrastructure.hasHousing =
+      status === "existing" || status === "not-required";
+
     estimation.currentStep = 3;
     await estimation.save();
     res.status(StatusCodes.OK).json({ success: true, estimation });
@@ -52,10 +81,16 @@ const updateStep3 = async (req, res, next) => {
   }
 };
 
+// Step 4 — Feed & operations (includes sellingPricePerKg, eggPricePerEgg)
 const updateStep4 = async (req, res, next) => {
   const estimation = req.estimation;
   try {
     estimation.feedOperations = req.body;
+
+    // Compute and store total feedPrice from staged inputs
+    const pt = estimation.productionSetup?.productionType;
+    estimation.feedOperations.feedPrice = computeTotalFeedPrice(req.body, pt);
+
     estimation.currentStep = 4;
     await estimation.save();
     res.status(StatusCodes.OK).json({ success: true, estimation });
@@ -64,6 +99,7 @@ const updateStep4 = async (req, res, next) => {
   }
 };
 
+// Step 5 — Health management (final step)
 const updateStep5 = async (req, res, next) => {
   const estimation = req.estimation;
   try {
@@ -76,28 +112,12 @@ const updateStep5 = async (req, res, next) => {
   }
 };
 
-const updateStep6 = async (req, res, next) => {
-  const estimation = req.estimation;
-  try {
-    estimation.marketInputs = req.body;
-    estimation.currentStep = 6;
-    await estimation.save();
-    res.status(StatusCodes.OK).json({ success: true, estimation });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ─── CALCULATE — now includes ML layer ────────────────────────────────────────
-
+// ── Calculate — rule-based + ML ───────────────────────────────────────────────
 const calculateEstimation = async (req, res, next) => {
   const { id } = req.params;
 
   try {
-    const estimation = await Estimation.findOne({
-      _id: id,
-      user: req.user.id,
-    });
+    const estimation = await Estimation.findOne({ _id: id, user: req.user.id });
 
     if (!estimation) {
       return res.status(StatusCodes.NOT_FOUND).json({
@@ -106,35 +126,44 @@ const calculateEstimation = async (req, res, next) => {
       });
     }
 
-    // 1. Run the existing rule-based calculation (unchanged)
+    // 1. Apply smart defaults for missing/zero fields
+    const filled = applySmartDefaults(estimation);
+
+    estimation.feedOperations.feedPrice = filled.feedPrice;
+    estimation.feedOperations.laborCost = filled.laborCost;
+    estimation.feedOperations.electricityCost = filled.electricityCost;
+    estimation.feedOperations.sellingPricePerKg = filled.sellingPricePerKg;
+    estimation.feedOperations.eggPricePerEgg = filled.eggPricePerEgg;
+    estimation.healthManagement.mortalityRate = filled.mortalityRate;
+
+    // 2. Run rule-based engine
     const ruleResults = runEstimation(estimation);
 
     estimation.results = {
       totalCostEstimation: ruleResults.totalCostEstimation,
-      projectedRevenue:    ruleResults.projectedRevenue,
-      projectedProfit:     ruleResults.projectedProfit,
-      roi:                 ruleResults.roi,
+      projectedRevenue: ruleResults.projectedRevenue,
+      projectedProfit: ruleResults.projectedProfit,
+      roi: ruleResults.roi,
     };
     estimation.status = "completed";
 
-    // 2. Call ML server for enhanced predictions (non-blocking fallback)
+    // 3. Call ML server
     const mlOutput = await getMLPrediction(estimation);
 
     if (mlOutput) {
-      // Populate the modelOutput subdocument (already in your Mongoose schema)
       estimation.modelOutput = {
-        predictedFeedCost:        mlOutput.predictedFeedCost,
-        predictedLaborCost:       mlOutput.predictedLaborCost,
+        predictedFeedCost: mlOutput.predictedFeedCost,
+        predictedLaborCost: mlOutput.predictedLaborCost,
         predictedElectricityCost: mlOutput.predictedElectricityCost,
-        confidenceScore:          mlOutput.confidenceScore,
+        confidenceScore: mlOutput.confidenceScore,
       };
     }
 
     await estimation.save();
 
-    // 3. Build response — rule-based results always present; ML block only if available
+    // 4. Build response
     const responsePayload = {
-      success:       true,
+      success: true,
       estimation,
       costBreakdown: ruleResults.costBreakdown,
     };
@@ -142,10 +171,11 @@ const calculateEstimation = async (req, res, next) => {
     if (mlOutput) {
       responsePayload.mlResults = {
         totalCostEstimation: mlOutput.mlTotalCostEstimation,
-        projectedRevenue:    mlOutput.mlProjectedRevenue,
-        projectedProfit:     mlOutput.mlProjectedProfit,
-        roi:                 mlOutput.mlRoi,
-        confidenceNote:      mlOutput.confidenceNote,
+        projectedRevenue: mlOutput.mlProjectedRevenue,
+        projectedProfit: mlOutput.mlProjectedProfit,
+        roi: mlOutput.mlRoi,
+        confidenceNote: mlOutput.confidenceNote,
+        defaultsApplied: mlOutput.defaultsApplied,
       };
     }
 
@@ -161,6 +191,5 @@ export {
   updateStep3,
   updateStep4,
   updateStep5,
-  updateStep6,
   calculateEstimation,
 };

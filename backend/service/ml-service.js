@@ -1,136 +1,209 @@
-/**
- * LivestockIQ — ML Service
- * ─────────────────────────
- * Called from estimation-controller.js during the /calculate step.
- * Sends the completed estimation to the Python inference server,
- * gets back ML predictions, and merges them into the modelOutput field.
- *
- * Usage in estimation-controller.js:
- *
- *   import { getMLPrediction } from "../service/ml-service.js";
- *
- *   // inside calculateEstimation controller, after runEstimation():
- *   const mlOutput = await getMLPrediction(estimation);
- *   estimation.modelOutput = mlOutput;
- */
-
 const ML_SERVER_URL = process.env.ML_SERVER_URL || "http://localhost:8000";
 
-/**
- * Converts a Mongoose Estimation document into the flat payload
- * the Python inference server expects.
- *
- * @param {import("../models/estimation.js").default} estimation
- * @returns {Object}
- */
-const buildMLPayload = (estimation) => {
-  const {
-    livestockType,
-    productionSetup = {},
-    housingInfrastructure = {},
-    feedOperations = {},
-    healthManagement = {},
-    marketInputs = {},
-  } = estimation;
+// ── Smart defaults by livestock/production type ───────────────────────────────
+const SMART_DEFAULTS = {
+  poultry: {
+    broiler: {
+      feedPrice: 650000,
+      laborCost: 80000,
+      electricityCost: 25000,
+      mortalityRate: 5,
+      vaccinationProgram: "standard",
+      medicationIntensity: "medium",
+      vetServiceFrequency: "monthly",
+      sellingPricePerKg: 3500,
+      eggPricePerEgg: 0,
+    },
+    layer: {
+      feedPrice: 700000,
+      laborCost: 90000,
+      electricityCost: 30000,
+      mortalityRate: 4,
+      vaccinationProgram: "standard",
+      medicationIntensity: "medium",
+      vetServiceFrequency: "monthly",
+      sellingPricePerKg: 0,
+      eggPricePerEgg: 120,
+    },
+  },
+  cattle: {
+    beef: {
+      feedPrice: 350000,
+      laborCost: 120000,
+      electricityCost: 30000,
+      mortalityRate: 3,
+      vaccinationProgram: "standard",
+      medicationIntensity: "low",
+      vetServiceFrequency: "quarterly",
+      sellingPricePerKg: 5000,
+      eggPricePerEgg: 0,
+    },
+  },
+};
+
+// ── Compute total feed price from staged inputs ───────────────────────────────
+const computeTotalFeedPrice = (feed, productionType, defaults) => {
+  if (!feed) return defaults.feedPrice || 0;
+  if (feed.manualOverride && feed.feedPrice > 0) return feed.feedPrice;
+
+  if (productionType === "broiler") {
+    const t = (feed.broilerStarterCost || 0) + (feed.broilerFinisherCost || 0);
+    if (t > 0) return t;
+  }
+  if (productionType === "layer") {
+    const t =
+      (feed.chickStarterCost || 0) +
+      (feed.growerMashCost || 0) +
+      (feed.layerMashCost || 0);
+    if (t > 0) return t;
+  }
+  if (productionType === "beef") {
+    const t = (feed.feedCostPerKg || 0) + (feed.supplementCost || 0);
+    if (t > 0) return t;
+  }
+
+  return feed.feedPrice || defaults.feedPrice || 0;
+};
+
+// ── Apply smart defaults ───────────────────────────────────────────────────────
+export const applySmartDefaults = (estimation) => {
+  const lt = estimation.livestockType;
+  const pt = estimation.productionSetup?.productionType;
+  const defaults = SMART_DEFAULTS[lt]?.[pt] || {};
+
+  const feed = estimation.feedOperations || {};
+  const health = estimation.healthManagement || {};
+
+  const feedPrice = computeTotalFeedPrice(feed, pt, defaults);
 
   return {
-    // Step 1
-    livestockType,
+    feedPrice: feedPrice || defaults.feedPrice || 0,
+    laborCost: feed.laborCost || defaults.laborCost || 0,
+    electricityCost: feed.electricityCost || defaults.electricityCost || 0,
 
-    // Step 2 – production setup
-    productionType:   productionSetup.productionType,
-    productionSystem: productionSetup.productionSystem,
-    numberOfAnimals:  productionSetup.numberOfAnimals,
-    cycleDuration:    productionSetup.cycleDuration,
-    location:         productionSetup.location,
+    // Market inputs now in feedOperations
+    sellingPricePerKg:
+      feed.sellingPricePerKg || defaults.sellingPricePerKg || 0,
+    eggPricePerEgg: feed.eggPricePerEgg || defaults.eggPricePerEgg || 0,
 
-    // Step 3 – housing
-    hasHousing:     housingInfrastructure.hasHousing ?? false,
-    housingType:    housingInfrastructure.housingType || "basic",
-    capacity:       housingInfrastructure.capacity    || 0,
-    equipmentCount: (housingInfrastructure.equipment || []).length,
-
-    // Step 4 – feed & ops
-    feedPrice:       feedOperations.feedPrice       || 0,
-    laborCost:       feedOperations.laborCost        || 0,
-    electricityCost: feedOperations.electricityCost  || 0,
-
-    // Step 5 – health
-    mortalityRate:       healthManagement.mortalityRate       || 0,
-    vaccinationProgram:  healthManagement.vaccinationProgram  || "minimal",
-    vetServiceFrequency: healthManagement.vetServiceFrequency || "monthly",
-    medicationIntensity: healthManagement.medicationIntensity || "low",
-    diseaseRiskLevel:    healthManagement.diseaseRiskLevel    || "low",
-
-    // Step 6 – market
-    sellingPricePerKg: marketInputs.sellingPricePerKg || 0,
-    eggPricePerEgg:    marketInputs.eggPricePerEgg    || 0,
-    milkPricePerLiter: marketInputs.milkPricePerLiter || 0,
+    mortalityRate: health.mortalityRate || defaults.mortalityRate || 5,
+    vaccinationProgram:
+      health.vaccinationProgram || defaults.vaccinationProgram || "standard",
+    medicationIntensity:
+      health.medicationIntensity || defaults.medicationIntensity || "medium",
+    vetServiceFrequency:
+      health.vetServiceFrequency || defaults.vetServiceFrequency || "monthly",
+    diseaseRiskLevel: health.diseaseRiskLevel || "medium",
+    parasiteControl: health.parasiteControl || "none",
   };
 };
 
-/**
- * Sends estimation data to the Python ML server and returns predictions.
- *
- * On success returns:
- *   {
- *     totalCostEstimation : number,
- *     projectedRevenue    : number,
- *     projectedProfit     : number,
- *     roi                 : number,
- *     confidenceNote      : string,
- *     mlUsed              : true,
- *   }
- *
- * On failure (ML server unavailable) returns null so the caller can
- * fall back gracefully to the rule-based estimation-service.js result.
- *
- * @param {import("../models/estimation.js").default} estimation
- * @returns {Promise<Object|null>}
- */
+// ── Build ML payload ───────────────────────────────────────────────────────────
+const buildMLPayload = (estimation) => {
+  const filled = applySmartDefaults(estimation);
+  const setup = estimation.productionSetup || {};
+  const housing = estimation.housingInfrastructure || {};
+
+  const hasHousing =
+    housing.housingStatus === "existing" ||
+    housing.housingStatus === "not-required" ||
+    housing.hasHousing === true;
+
+  return {
+    livestockType: estimation.livestockType,
+    productionType: setup.productionType,
+    productionSystem: setup.productionSystem,
+    numberOfAnimals: setup.numberOfAnimals,
+    cycleDuration: setup.cycleDuration,
+    location: setup.location,
+
+    hasHousing,
+    housingType: housing.housingType || "basic",
+    capacity: housing.capacity || housing.requiredSpace || 0,
+    equipmentCount: (housing.equipment || []).length,
+
+    feedPrice: filled.feedPrice,
+    laborCost: filled.laborCost,
+    electricityCost: filled.electricityCost,
+
+    mortalityRate: filled.mortalityRate,
+    vaccinationProgram: filled.vaccinationProgram,
+    medicationIntensity: filled.medicationIntensity,
+    vetServiceFrequency: filled.vetServiceFrequency,
+    diseaseRiskLevel: filled.diseaseRiskLevel,
+
+    sellingPricePerKg: filled.sellingPricePerKg,
+    eggPricePerEgg: filled.eggPricePerEgg,
+    milkPricePerLiter: 0,
+
+    year: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+  };
+};
+
+// ── Get ML prediction ──────────────────────────────────────────────────────────
 export const getMLPrediction = async (estimation) => {
   try {
     const payload = buildMLPayload(estimation);
+    const feed = estimation.feedOperations || {};
+    const health = estimation.healthManagement || {};
+
+    const defaultsApplied = {
+      feedPrice:
+        !feed.feedPrice &&
+        !feed.broilerStarterCost &&
+        !feed.chickStarterCost &&
+        !feed.feedCostPerKg,
+      laborCost: !feed.laborCost,
+      electricityCost: !feed.electricityCost,
+      mortalityRate: !health.mortalityRate,
+      sellingPricePerKg: !feed.sellingPricePerKg,
+      eggPricePerEgg: !feed.eggPricePerEgg,
+    };
 
     const response = await fetch(`${ML_SERVER_URL}/predict`, {
-      method:  "POST",
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(payload),
-      signal:  AbortSignal.timeout(8000), // 8-second timeout
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!response.ok) {
       const errorBody = await response.text();
-      console.error("[ML Service] Prediction failed:", response.status, errorBody);
+      console.error(
+        "[ML Service] Prediction failed:",
+        response.status,
+        errorBody,
+      );
       return null;
     }
 
     const data = await response.json();
 
     return {
-      predictedFeedCost:       payload.feedPrice,       // already supplied by user
-      predictedLaborCost:      payload.laborCost,        // already supplied by user
-      predictedElectricityCost:payload.electricityCost,  // already supplied by user
-      confidenceScore:         0.92,                     // placeholder until model exposes it
-      mlUsed:                  true,
-      // ML-adjusted financial outputs
-      mlTotalCostEstimation:   data.totalCostEstimation,
-      mlProjectedRevenue:      data.projectedRevenue,
-      mlProjectedProfit:       data.projectedProfit,
-      mlRoi:                   data.roi,
-      confidenceNote:          data.confidenceNote,
+      predictedFeedCost: payload.feedPrice,
+      predictedLaborCost: payload.laborCost,
+      predictedElectricityCost: payload.electricityCost,
+      confidenceScore: 0.92,
+      mlUsed: true,
+      defaultsApplied,
+
+      mlTotalCostEstimation: data.totalCostEstimation,
+      mlProjectedRevenue: data.projectedRevenue,
+      mlProjectedProfit: data.projectedProfit,
+      mlRoi: data.roi,
+      confidenceNote: data.confidenceNote,
     };
   } catch (err) {
-    // Network error, timeout, or server down — degrade gracefully
-    console.warn("[ML Service] Unavailable, using rule-based fallback:", err.message);
+    console.warn(
+      "[ML Service] Unavailable, using rule-based fallback:",
+      err.message,
+    );
     return null;
   }
 };
 
-/**
- * Quick health check — call this on backend startup to warn early
- * if the ML server is not reachable.
- */
+// ── Health check ───────────────────────────────────────────────────────────────
 export const checkMLHealth = async () => {
   try {
     const res = await fetch(`${ML_SERVER_URL}/health`, {
