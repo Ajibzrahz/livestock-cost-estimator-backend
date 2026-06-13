@@ -4,6 +4,7 @@ import {
   getCostBreakdown,
   getDashboardSummary,
   getRecentEstimation,
+  deleteEstimation,
 } from "../controllers/dashboard.js";
 import { authenticateUser } from "../middleware/auth.js";
 
@@ -14,5 +15,6 @@ router.get("/summary", getDashboardSummary);
 router.get("/cost-breakdown", getCostBreakdown);
 router.get("/recent", getRecentEstimation);
 router.get("/analytics", getAnalytics);
+router.delete("/:id", deleteEstimation);
 
 export default router;

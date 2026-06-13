@@ -104,7 +104,7 @@ const getAnalytics = async (req, res, next) => {
     estimations.forEach((e) => {
       const month = new Date(e.createdAt).toLocaleString("default", {
         month: "short",
-        year: "numeric"
+        year: "numeric",
       });
 
       if (!monthly[month]) {
@@ -129,4 +129,37 @@ const getAnalytics = async (req, res, next) => {
   }
 };
 
-export {getAnalytics, getCostBreakdown, getDashboardSummary, getRecentEstimation}
+const deleteEstimation = async (req, res, next) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+
+  try {
+    // Find the estimation scoped to the current user so one user
+    // can never delete another user's estimation.
+    const estimation = await Estimation.findOne({ _id: id, user: userId });
+
+    if (!estimation) {
+      return res.status(StatusCodes.NOT_FOUND).json({
+        success: false,
+        message: "Estimation not found",
+      });
+    }
+
+    await estimation.deleteOne();
+
+    return res.status(StatusCodes.OK).json({
+      success: true,
+      message: "Estimation deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export {
+  getAnalytics,
+  getCostBreakdown,
+  getDashboardSummary,
+  getRecentEstimation,
+  deleteEstimation,
+};
