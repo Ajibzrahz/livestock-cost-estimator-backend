@@ -75,20 +75,17 @@ const estimationSchema = new mongoose.Schema(
       buildingMaterial: { type: String, trim: true },
       fencingType: { type: String, trim: true },
       equipment: [{ type: String, trim: true }],
-
-      // Backward compatibility
       hasHousing: { type: Boolean, default: false },
       capacity: { type: Number, min: 0 },
     },
 
     // ── STEP 3 — FEED & OPERATIONS ────────────────────────────────────────────
-    // Market inputs merged into this step
     feedOperations: {
-      // Poultry broiler staged feed (per 25kg bag)
+      // Poultry broiler staged feed
       broilerStarterCost: { type: Number, min: 0, default: 0 },
       broilerFinisherCost: { type: Number, min: 0, default: 0 },
 
-      // Poultry layer staged feed (per 25kg bag)
+      // Poultry layer staged feed
       chickStarterCost: { type: Number, min: 0, default: 0 },
       growerMashCost: { type: Number, min: 0, default: 0 },
       layerMashCost: { type: Number, min: 0, default: 0 },
@@ -98,17 +95,15 @@ const estimationSchema = new mongoose.Schema(
       supplementCost: { type: Number, min: 0, default: 0 },
       grazingAvailability: { type: Boolean, default: false },
 
-      // Computed total feed price (set by backend)
+      // Computed total feed price
       feedPrice: { type: Number, min: 0, default: 0 },
-
-      // Manual override toggle
       manualOverride: { type: Boolean, default: false },
 
       // Shared
       laborCost: { type: Number, min: 0, default: 0 },
       electricityCost: { type: Number, min: 0, default: 0 },
 
-      // Market inputs merged here (no longer a separate step)
+      // Market inputs merged here
       sellingPricePerKg: { type: Number, min: 0, default: 0 },
       eggPricePerEgg: { type: Number, min: 0, default: 0 },
     },
@@ -132,7 +127,6 @@ const estimationSchema = new mongoose.Schema(
         type: String,
         enum: ["low", "medium", "high"],
       },
-      // Cattle only
       parasiteControl: {
         type: String,
         enum: ["none", "occasional", "regular"],
@@ -146,6 +140,27 @@ const estimationSchema = new mongoose.Schema(
       projectedRevenue: { type: Number, default: 0 },
       projectedProfit: { type: Number, default: 0 },
       roi: { type: Number, default: 0 },
+    },
+
+    // ── COST BREAKDOWN — structured into startup and operating ────────────────
+    costBreakdown: {
+      startupCosts: {
+        animalAcquisitionCost: { type: Number, default: 0 },
+        housingCost: { type: Number, default: 0 },
+        equipmentCost: { type: Number, default: 0 },
+        vaccinationCost: { type: Number, default: 0 },
+        totalStartupCost: { type: Number, default: 0 },
+      },
+      operatingCosts: {
+        feedPrice: { type: Number, default: 0 },
+        laborCost: { type: Number, default: 0 },
+        electricityCost: { type: Number, default: 0 },
+        medicationCost: { type: Number, default: 0 },
+        vetServiceCost: { type: Number, default: 0 },
+        parasiteControlCost: { type: Number, default: 0 },
+        totalOperatingCost: { type: Number, default: 0 },
+      },
+      totalCostEstimation: { type: Number, default: 0 },
     },
 
     // ── ML OUTPUT ─────────────────────────────────────────────────────────────

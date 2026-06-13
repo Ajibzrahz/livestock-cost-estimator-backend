@@ -145,6 +145,9 @@ const calculateEstimation = async (req, res, next) => {
       projectedProfit: ruleResults.projectedProfit,
       roi: ruleResults.roi,
     };
+
+    // Save structured cost breakdown to database
+    estimation.costBreakdown = ruleResults.costBreakdown;
     estimation.status = "completed";
 
     // 3. Call ML server

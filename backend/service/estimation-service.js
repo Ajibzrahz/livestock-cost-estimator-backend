@@ -1,3 +1,25 @@
+// ── Animal acquisition cost per head (2025 Nigerian market prices) ────────────
+const getAnimalAcquisitionCost = (numberOfAnimals, productionType, mortalityRate) => {
+  const mortalityBuffer = 1 + (mortalityRate / 100);
+
+  // Buy extra animals to account for expected mortality
+  const animalsToAcquire = Math.ceil(numberOfAnimals * mortalityBuffer);
+
+  if (productionType === "broiler") {
+    const pricePerBird = 1000; // ₦800–₦1,200 avg
+    return animalsToAcquire * pricePerBird;
+  }
+  if (productionType === "layer") {
+    const pricePerBird = 1200; // ₦1,000–₦1,500 avg
+    return animalsToAcquire * pricePerBird;
+  }
+  if (productionType === "beef") {
+    const pricePerHead = 200000; // ₦150,000–₦300,000 avg weaner
+    return animalsToAcquire * pricePerHead;
+  }
+  return 0;
+};
+
 // ── Derive total feed price from staged inputs ────────────────────────────────
 const computeFeedPrice = (feedOperations, productionType) => {
   if (!feedOperations) return 0;
@@ -23,24 +45,24 @@ const computeFeedPrice = (feedOperations, productionType) => {
 };
 
 // ── Housing cost helpers ──────────────────────────────────────────────────────
-const getPoultryHousingCost = (numberOfAnimals, h) => {
+const getPoultryHousingCost = (n, h) => {
   if (h?.housingStatus === "existing" || h?.housingStatus === "not-required") return 0;
   if (h?.hasHousing) return 0;
 
   const t = h?.housingType || "basic";
-  if (t === "steel-structure" || t === "premium")  return numberOfAnimals * 4000;
-  if (t === "block-concrete"  || t === "standard") return numberOfAnimals * 2500;
-  return numberOfAnimals * 1500; // wooden / basic
+  if (t === "steel-structure" || t === "premium")  return n * 4000;
+  if (t === "block-concrete"  || t === "standard") return n * 2500;
+  return n * 1500;
 };
 
-const getCattleHousingCost = (numberOfAnimals, h) => {
+const getCattleHousingCost = (n, h) => {
   if (h?.housingStatus === "existing" || h?.housingStatus === "not-required") return 0;
   if (h?.hasHousing) return 0;
 
   const t = h?.housingType || "basic";
-  if (t === "steel-structure" || t === "premium")  return numberOfAnimals * 150000;
-  if (t === "block-concrete"  || t === "standard") return numberOfAnimals * 130000;
-  return numberOfAnimals * 80000; // wooden / basic
+  if (t === "steel-structure" || t === "premium")  return n * 150000;
+  if (t === "block-concrete"  || t === "standard") return n * 130000;
+  return n * 80000;
 };
 
 // ── Shared cost helpers ───────────────────────────────────────────────────────
@@ -48,9 +70,9 @@ const getEquipmentCost = (n, equipment = []) =>
   equipment?.length ? equipment.length * n * 50 : 0;
 
 const getVaccinationCost = (n, program) => {
-  if (program === "intensive")                    return n * 500;
-  if (program === "standard")                     return n * 250;
-  if (program === "minimal" || program === "basic") return n * 100;
+  if (program === "intensive")                       return n * 500;
+  if (program === "standard")                        return n * 250;
+  if (program === "minimal" || program === "basic")  return n * 100;
   return 0;
 };
 
@@ -84,26 +106,33 @@ const runPoultryEstimation = (estimation) => {
   const n             = setup.numberOfAnimals || 0;
   const cycleDuration = setup.cycleDuration   || 0;
   const productionType= setup.productionType;
+  const mortalityRate = health.mortalityRate  || 0;
 
   const feedPrice       = computeFeedPrice(feed, productionType);
   const laborCost       = feed.laborCost       || 0;
   const electricityCost = feed.electricityCost || 0;
-  const mortalityRate   = health.mortalityRate || 0;
 
-  // Market inputs now live in feedOperations
+  // Market inputs now in feedOperations
   const sellingPricePerKg = feed.sellingPricePerKg || 0;
   const eggPricePerEgg    = feed.eggPricePerEgg    || 0;
 
-  const housingCost     = getPoultryHousingCost(n, housing);
-  const equipmentCost   = getEquipmentCost(n, housing.equipment);
-  const vaccinationCost = getVaccinationCost(n, health.vaccinationProgram);
+  // ── Startup costs ──
+  const animalAcquisitionCost = getAnimalAcquisitionCost(n, productionType, mortalityRate);
+  const housingCost           = getPoultryHousingCost(n, housing);
+  const equipmentCost         = getEquipmentCost(n, housing.equipment);
+  const vaccinationCost       = getVaccinationCost(n, health.vaccinationProgram);
+
+  // ── Operating costs ──
   const medicationCost  = getMedicationCost(n, health.medicationIntensity);
   const vetServiceCost  = getVetServiceCost(n, health.vetServiceFrequency);
 
-  const totalCostEstimation =
-    feedPrice + laborCost + electricityCost +
-    housingCost + equipmentCost +
-    vaccinationCost + medicationCost + vetServiceCost;
+  const totalStartupCost =
+    animalAcquisitionCost + housingCost + equipmentCost + vaccinationCost;
+
+  const totalOperatingCost =
+    feedPrice + laborCost + electricityCost + medicationCost + vetServiceCost;
+
+  const totalCostEstimation = totalStartupCost + totalOperatingCost;
 
   const surviving = n * (1 - mortalityRate / 100);
   let projectedRevenue = 0;
@@ -125,9 +154,22 @@ const runPoultryEstimation = (estimation) => {
     projectedProfit,
     roi,
     costBreakdown: {
-      feedPrice, laborCost, electricityCost,
-      housingCost, equipmentCost,
-      vaccinationCost, medicationCost, vetServiceCost,
+      startupCosts: {
+        animalAcquisitionCost,
+        housingCost,
+        equipmentCost,
+        vaccinationCost,
+        totalStartupCost,
+      },
+      operatingCosts: {
+        feedPrice,
+        laborCost,
+        electricityCost,
+        medicationCost,
+        vetServiceCost,
+        totalOperatingCost,
+      },
+      totalCostEstimation,
     },
   };
 };
@@ -141,26 +183,33 @@ const runCattleEstimation = (estimation) => {
 
   const n            = setup.numberOfAnimals || 0;
   const productionType = setup.productionType;
+  const mortalityRate  = health.mortalityRate || 0;
 
   const feedPrice       = computeFeedPrice(feed, productionType);
   const laborCost       = feed.laborCost       || 0;
   const electricityCost = feed.electricityCost || 0;
-  const mortalityRate   = health.mortalityRate || 0;
 
-  // Market inputs now live in feedOperations
   const sellingPricePerKg = feed.sellingPricePerKg || 0;
 
-  const housingCost         = getCattleHousingCost(n, housing);
-  const equipmentCost       = getEquipmentCost(n, housing.equipment);
-  const vaccinationCost     = getVaccinationCost(n, health.vaccinationProgram);
+  // ── Startup costs ──
+  const animalAcquisitionCost = getAnimalAcquisitionCost(n, productionType, mortalityRate);
+  const housingCost           = getCattleHousingCost(n, housing);
+  const equipmentCost         = getEquipmentCost(n, housing.equipment);
+  const vaccinationCost       = getVaccinationCost(n, health.vaccinationProgram);
+
+  // ── Operating costs ──
   const medicationCost      = getMedicationCost(n, health.medicationIntensity);
   const vetServiceCost      = getVetServiceCost(n, health.vetServiceFrequency);
   const parasiteControlCost = getParasiteControlCost(n, health.parasiteControl);
 
-  const totalCostEstimation =
+  const totalStartupCost =
+    animalAcquisitionCost + housingCost + equipmentCost + vaccinationCost;
+
+  const totalOperatingCost =
     feedPrice + laborCost + electricityCost +
-    housingCost + equipmentCost +
-    vaccinationCost + medicationCost + vetServiceCost + parasiteControlCost;
+    medicationCost + vetServiceCost + parasiteControlCost;
+
+  const totalCostEstimation = totalStartupCost + totalOperatingCost;
 
   const surviving = n * (1 - mortalityRate / 100);
   const projectedRevenue = productionType === "beef"
@@ -178,9 +227,23 @@ const runCattleEstimation = (estimation) => {
     projectedProfit,
     roi,
     costBreakdown: {
-      feedPrice, laborCost, electricityCost,
-      housingCost, equipmentCost,
-      vaccinationCost, medicationCost, vetServiceCost, parasiteControlCost,
+      startupCosts: {
+        animalAcquisitionCost,
+        housingCost,
+        equipmentCost,
+        vaccinationCost,
+        totalStartupCost,
+      },
+      operatingCosts: {
+        feedPrice,
+        laborCost,
+        electricityCost,
+        medicationCost,
+        vetServiceCost,
+        parasiteControlCost,
+        totalOperatingCost,
+      },
+      totalCostEstimation,
     },
   };
 };
