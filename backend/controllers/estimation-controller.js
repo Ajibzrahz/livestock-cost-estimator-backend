@@ -3,36 +3,92 @@ import { StatusCodes } from "http-status-codes";
 import { runEstimation } from "../service/estimation-service.js";
 import { getMLPrediction, applySmartDefaults } from "../service/ml-service.js";
 
+// ── Feed assumptions (tune to your context) ──────────────────────────────────
+const KG_PER_BIRD_BROILER = 4.25; // ~4–4.5 kg over an 8-week broiler cycle
+const KG_PER_BIRD_LAYER = 40; // layers eat far more over their laying life
+const KG_PER_BAG = 25; // feed sold in 25 kg bags
+
 // ── Compute total feedPrice from staged inputs ────────────────────────────────
-const computeTotalFeedPrice = (feedOperations, productionType) => {
-  if (!feedOperations) return 0;
+// Accepts BOTH the frontend's "...Price" names and the schema's "...Cost" names.
+// Multiplies per-bag prices by the number of bags the flock actually needs,
+// so the result scales with flock size instead of just adding two bag prices.
+const computeTotalFeedPrice = (feed, productionType, numberOfAnimals = 0) => {
+  if (!feed) return 0;
 
-  if (feedOperations.manualOverride && feedOperations.feedPrice > 0) {
-    return feedOperations.feedPrice;
+  // Honor an explicit manual total if the user overrode it
+  if (feed.manualOverride && feed.feedPrice > 0) return feed.feedPrice;
+
+  const pt = (productionType || "").toLowerCase();
+  const birds = Number(numberOfAnimals) || 0;
+
+  // Read either naming convention
+  const starter = Number(
+    feed.broilerStarterCost ?? feed.broilerStarterPrice ?? 0,
+  );
+  const finisher = Number(
+    feed.broilerFinisherCost ?? feed.broilerFinisherPrice ?? 0,
+  );
+  const chick = Number(feed.chickStarterCost ?? feed.chickStarterPrice ?? 0);
+  const grower = Number(feed.growerMashCost ?? feed.growerFeedPrice ?? 0);
+  const layer = Number(feed.layerMashCost ?? feed.layerFeedPrice ?? 0);
+
+  if (pt === "broiler") {
+    const avgBagPrice = (starter + finisher) / 2;
+    if (avgBagPrice > 0 && birds > 0) {
+      const bags = (birds * KG_PER_BIRD_BROILER) / KG_PER_BAG;
+      return Math.round(bags * avgBagPrice);
+    }
   }
 
-  if (productionType === "broiler") {
+  if (pt === "layer") {
+    const avgBagPrice = (chick + grower + layer) / 3;
+    if (avgBagPrice > 0 && birds > 0) {
+      const bags = (birds * KG_PER_BIRD_LAYER) / KG_PER_BAG;
+      return Math.round(bags * avgBagPrice);
+    }
+  }
+
+  if (pt === "beef") {
     const total =
-      (feedOperations.broilerStarterCost || 0) +
-      (feedOperations.broilerFinisherCost || 0);
+      Number(feed.feedCostPerKg ?? 0) + Number(feed.supplementCost ?? 0);
     if (total > 0) return total;
   }
-  if (productionType === "layer") {
-    const total =
-      (feedOperations.chickStarterCost || 0) +
-      (feedOperations.growerMashCost || 0) +
-      (feedOperations.layerMashCost || 0);
-    if (total > 0) return total;
-  }
-  if (productionType === "beef") {
-    const total =
-      (feedOperations.feedCostPerKg || 0) +
-      (feedOperations.supplementCost || 0);
-    if (total > 0) return total;
-  }
 
-  return feedOperations.feedPrice || 0;
+  return feed.feedPrice || 0;
 };
+
+// Normalize incoming feed body: map frontend "...Price" names onto the schema's
+// "...Cost" names so Mongoose actually persists them (it silently drops unknown keys).
+const normalizeFeedBody = (b = {}) => ({
+  // Poultry broiler staged feed
+  broilerStarterCost: Number(
+    b.broilerStarterCost ?? b.broilerStarterPrice ?? 0,
+  ),
+  broilerFinisherCost: Number(
+    b.broilerFinisherCost ?? b.broilerFinisherPrice ?? 0,
+  ),
+
+  // Poultry layer staged feed
+  chickStarterCost: Number(b.chickStarterCost ?? b.chickStarterPrice ?? 0),
+  growerMashCost: Number(b.growerMashCost ?? b.growerFeedPrice ?? 0),
+  layerMashCost: Number(b.layerMashCost ?? b.layerFeedPrice ?? 0),
+
+  // Cattle feed
+  feedCostPerKg: Number(b.feedCostPerKg ?? 0),
+  supplementCost: Number(b.supplementCost ?? 0),
+  grazingAvailability: b.grazingAvailability ?? false,
+
+  // Manual override (frontend calls it overrideFeedPrice)
+  manualOverride: b.manualOverride ?? b.overrideFeedPrice ?? false,
+
+  // Shared operating costs
+  laborCost: Number(b.laborCost ?? 0),
+  electricityCost: Number(b.electricityCost ?? 0),
+
+  // Market inputs
+  sellingPricePerKg: Number(b.sellingPricePerKg ?? 0),
+  eggPricePerEgg: Number(b.eggPricePerEgg ?? 0),
+});
 
 // ── Step controllers ──────────────────────────────────────────────────────────
 
@@ -85,11 +141,19 @@ const updateStep3 = async (req, res, next) => {
 const updateStep4 = async (req, res, next) => {
   const estimation = req.estimation;
   try {
-    estimation.feedOperations = req.body;
+    // Map the frontend's field names onto the schema's field names so the
+    // starter/finisher values actually get saved (Mongoose drops unknown keys).
+    const mapped = normalizeFeedBody(req.body);
+    estimation.feedOperations = mapped;
 
-    // Compute and store total feedPrice from staged inputs
+    // Compute and store flock-scaled total feedPrice from staged inputs
     const pt = estimation.productionSetup?.productionType;
-    estimation.feedOperations.feedPrice = computeTotalFeedPrice(req.body, pt);
+    const birds = estimation.productionSetup?.numberOfAnimals;
+    estimation.feedOperations.feedPrice = computeTotalFeedPrice(
+      mapped,
+      pt,
+      birds,
+    );
 
     estimation.currentStep = 4;
     await estimation.save();
@@ -190,8 +254,9 @@ const calculateEstimation = async (req, res, next) => {
 
 const getUserEstimations = async (req, res, next) => {
   try {
-    const estimations = await Estimation.find({ user: req.user.id })
-      .sort({ updatedAt: -1 })
+    const estimations = await Estimation.find({ user: req.user.id }).sort({
+      updatedAt: -1,
+    });
 
     if (estimations.length === 0) {
       return res.status(StatusCodes.OK).json({
@@ -214,7 +279,6 @@ const getEstimation = async (req, res, next) => {
   const { id } = req.params;
 
   try {
-    // Scope to the logged-in user so one user can't read another's estimation.
     const estimation = await Estimation.findOne({ _id: id, user: req.user.id });
 
     if (!estimation) {
@@ -241,5 +305,5 @@ export {
   updateStep5,
   calculateEstimation,
   getUserEstimations,
-  getEstimation
+  getEstimation,
 };

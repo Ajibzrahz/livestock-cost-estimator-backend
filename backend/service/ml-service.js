@@ -1,6 +1,13 @@
 const ML_SERVER_URL = process.env.ML_SERVER_URL || "http://localhost:8000";
 
+// ── Feed assumptions (keep in sync with the controller) ──────────────────────
+const KG_PER_BIRD_BROILER = 4.25; // ~4–4.5 kg over an 8-week broiler cycle
+const KG_PER_BIRD_LAYER = 40; // layers eat far more over their laying life
+const KG_PER_BAG = 25; // feed sold in 25 kg bags
+
 // ── Smart defaults by livestock/production type ───────────────────────────────
+// NOTE: feedPrice here is only a last-resort fallback when the user provided
+// no feed input at all. Real inputs should always win over these.
 const SMART_DEFAULTS = {
   poultry: {
     broiler: {
@@ -42,23 +49,51 @@ const SMART_DEFAULTS = {
 };
 
 // ── Compute total feed price from staged inputs ───────────────────────────────
-const computeTotalFeedPrice = (feed, productionType, defaults) => {
+// Accepts BOTH "...Cost" (schema) and "...Price" (frontend) names, and scales
+// per-bag prices by the number of bags the flock actually needs.
+const computeTotalFeedPrice = (
+  feed,
+  productionType,
+  defaults,
+  numberOfAnimals = 0,
+) => {
   if (!feed) return defaults.feedPrice || 0;
+
+  // Honor an explicit manual total if provided
   if (feed.manualOverride && feed.feedPrice > 0) return feed.feedPrice;
 
-  if (productionType === "broiler") {
-    const t = (feed.broilerStarterCost || 0) + (feed.broilerFinisherCost || 0);
-    if (t > 0) return t;
+  const pt = (productionType || "").toLowerCase();
+  const birds = Number(numberOfAnimals) || 0;
+
+  const starter = Number(
+    feed.broilerStarterCost ?? feed.broilerStarterPrice ?? 0,
+  );
+  const finisher = Number(
+    feed.broilerFinisherCost ?? feed.broilerFinisherPrice ?? 0,
+  );
+  const chick = Number(feed.chickStarterCost ?? feed.chickStarterPrice ?? 0);
+  const grower = Number(feed.growerMashCost ?? feed.growerFeedPrice ?? 0);
+  const layer = Number(feed.layerMashCost ?? feed.layerFeedPrice ?? 0);
+
+  if (pt === "broiler") {
+    const avgBagPrice = (starter + finisher) / 2;
+    if (avgBagPrice > 0 && birds > 0) {
+      const bags = (birds * KG_PER_BIRD_BROILER) / KG_PER_BAG;
+      return Math.round(bags * avgBagPrice);
+    }
   }
-  if (productionType === "layer") {
+
+  if (pt === "layer") {
+    const avgBagPrice = (chick + grower + layer) / 3;
+    if (avgBagPrice > 0 && birds > 0) {
+      const bags = (birds * KG_PER_BIRD_LAYER) / KG_PER_BAG;
+      return Math.round(bags * avgBagPrice);
+    }
+  }
+
+  if (pt === "beef") {
     const t =
-      (feed.chickStarterCost || 0) +
-      (feed.growerMashCost || 0) +
-      (feed.layerMashCost || 0);
-    if (t > 0) return t;
-  }
-  if (productionType === "beef") {
-    const t = (feed.feedCostPerKg || 0) + (feed.supplementCost || 0);
+      Number(feed.feedCostPerKg ?? 0) + Number(feed.supplementCost ?? 0);
     if (t > 0) return t;
   }
 
@@ -73,8 +108,9 @@ export const applySmartDefaults = (estimation) => {
 
   const feed = estimation.feedOperations || {};
   const health = estimation.healthManagement || {};
+  const numberOfAnimals = estimation.productionSetup?.numberOfAnimals || 0;
 
-  const feedPrice = computeTotalFeedPrice(feed, pt, defaults);
+  const feedPrice = computeTotalFeedPrice(feed, pt, defaults, numberOfAnimals);
 
   return {
     feedPrice: feedPrice || defaults.feedPrice || 0,
@@ -152,7 +188,9 @@ export const getMLPrediction = async (estimation) => {
       feedPrice:
         !feed.feedPrice &&
         !feed.broilerStarterCost &&
+        !feed.broilerStarterPrice &&
         !feed.chickStarterCost &&
+        !feed.chickStarterPrice &&
         !feed.feedCostPerKg,
       laborCost: !feed.laborCost,
       electricityCost: !feed.electricityCost,
