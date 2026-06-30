@@ -11,6 +11,12 @@ const KG_PER_BIRD_BROILER = 4.25; // ~4–4.5 kg over an 8-week broiler cycle
 const KG_PER_BIRD_LAYER = 40; // layers eat far more over their laying life
 const KG_PER_BAG = 25; // feed sold in 25 kg bags
 
+// ── Plausible floors for market prices ───────────────────────────────────────
+// Guards against bad/leaked inputs (e.g. a kg-per-bird constant ending up in
+// sellingPricePerKg). A broiler live/dressed price is never a few naira per kg.
+const MIN_SELLING_PRICE_PER_KG = 100; // ₦/kg — below this is implausible
+const MIN_EGG_PRICE = 10; // ₦/egg — below this is implausible
+
 // ── Smart defaults by livestock/production type ───────────────────────────────
 // NOTE: feedPrice here is only a coarse last-resort fallback. The system now
 // prefers a flock-scaled estimate (see estimateFeedPrice) over these flat values.
@@ -148,15 +154,28 @@ export const applySmartDefaults = (estimation) => {
         defaults.electricityCost ||
         0;
 
+  // Selling price: accept the user's value only if it is plausible. A value
+  // below the floor (e.g. a stray 4.25) is treated as invalid and replaced with
+  // the sensible default, so revenue can't collapse to near-zero.
+  const rawSelling = Number(feed.sellingPricePerKg) || 0;
+  const sellingPricePerKg =
+    rawSelling >= MIN_SELLING_PRICE_PER_KG
+      ? rawSelling
+      : defaults.sellingPricePerKg || 0;
+
+  // Egg price: same plausibility guard for layers.
+  const rawEgg = Number(feed.eggPricePerEgg) || 0;
+  const eggPricePerEgg =
+    rawEgg >= MIN_EGG_PRICE ? rawEgg : defaults.eggPricePerEgg || 0;
+
   return {
     feedPrice: feedPrice || defaults.feedPrice || 0,
     laborCost,
     electricityCost,
 
-    // Market inputs now in feedOperations
-    sellingPricePerKg:
-      feed.sellingPricePerKg || defaults.sellingPricePerKg || 0,
-    eggPricePerEgg: feed.eggPricePerEgg || defaults.eggPricePerEgg || 0,
+    // Market inputs now in feedOperations (plausibility-checked above)
+    sellingPricePerKg,
+    eggPricePerEgg,
 
     mortalityRate: health.mortalityRate || defaults.mortalityRate || 5,
     vaccinationProgram:
